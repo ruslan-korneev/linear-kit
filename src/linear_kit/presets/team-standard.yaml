@@ -1,0 +1,45 @@
+kind: team
+name: team-standard
+description: 2-week cycles, triage, fibonacci estimates, review state, grouped labels
+
+team:
+  private: false
+  # timezone is omitted so Linear keeps its default; set your own, e.g.
+  # timezone: Europe/Berlin
+  cycles:
+    enabled: true
+    duration_weeks: 2
+    cooldown_weeks: 0
+    start_day: 1          # 0 = Sunday, 1 = Monday
+    upcoming_count: 2
+    auto_assign_started: true
+    auto_assign_completed: true
+    lock_to_active: false
+  estimation:
+    type: fibonacci       # notUsed | exponential | fibonacci | linear | tShirt
+    default: 1
+    allow_zero: false
+  triage:
+    enabled: true
+    require_priority: false
+
+# Matched to the team's existing states by name — Linear seeds defaults on
+# create, so these converge onto them instead of duplicating them.
+workflow_states:
+  - { name: Backlog,     type: backlog,   color: "#bec2c8" }
+  - { name: Todo,        type: unstarted, color: "#e2e2e2" }
+  - { name: In Progress, type: started,   color: "#f2c94c" }
+  - { name: In Review,   type: started,   color: "#0f7488" }
+  - { name: Done,        type: completed, color: "#5e6ad2" }
+  - { name: Canceled,    type: canceled,  color: "#95a2b3" }
+
+labels:
+  - name: Type
+    is_group: true
+    children:
+      - { name: Chore,    color: "#bec2c8" }
+      - { name: Docs,     color: "#0f7488" }
+      - { name: Refactor, color: "#5e6ad2" }
+      - { name: Spike,    color: "#f2c94c" }
+  - { name: Blocked,   color: "#eb5757", description: "Waiting on something outside this team" }
+  - { name: Tech Debt, color: "#95a2b3" }

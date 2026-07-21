@@ -1,0 +1,27 @@
+kind: project
+name: project-standard
+description: Project skeleton with Discovery / Build / Launch milestones
+
+project:
+  priority: 3             # 0 none, 1 urgent, 2 high, 3 medium, 4 low
+  content: |
+    ## Goal
+
+    _What outcome does this project produce, and how do we know it landed?_
+
+    ## Scope
+
+    - [ ] In scope
+    - [ ] Out of scope
+
+    ## Risks
+
+    _What could make this slip?_
+
+  milestones:
+    - name: Discovery
+      description: Problem framed, approach chosen, unknowns resolved.
+    - name: Build
+      description: Implementation complete behind a flag, tests green.
+    - name: Launch
+      description: Rolled out, monitored, documented.

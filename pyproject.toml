@@ -1,0 +1,42 @@
+[project]
+name = "linear-kit"
+version = "0.1.0"
+description = "Provision and configure Linear workspaces from declarative YAML presets"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ruslan Korneev", email = "shaggybackend@gmail.com" }]
+requires-python = ">=3.12"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
+dependencies = [
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+]
+
+[project.urls]
+Repository = "https://github.com/ruslan-korneev/linear-kit"
+
+[project.scripts]
+linear-kit = "linear_kit.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/linear_kit"]
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.basedpyright]
+typeCheckingMode = "standard"

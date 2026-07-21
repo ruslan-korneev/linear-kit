@@ -1,0 +1,37 @@
+kind: views
+name: views-lists
+description: Working lists — the backlog, and what is urgent right now
+
+# `Urgent` names states directly (Todo / Pause / In Progress) rather than state
+# types, because `unstarted + started` would also drag in In Review and Testing —
+# work that is moving, not work that needs picking up. The cost is that this
+# preset needs those exact states: it fits teams built from `team-extended`, while
+# `team-standard` has no `Pause` and will fail on it, listing what it does have.
+#
+# `Backlog` filters on the state *type*, so it applies anywhere.
+
+views:
+  - name: Backlog
+    description: Everything not yet picked up, worst-priority first.
+    shared: true
+    filter:
+      state_type: [backlog]
+    display:
+      layout: list
+      group_by: priority
+      order_by: priority
+      nesting: none            # sub-issues as their own rows, not tucked under parents
+      show_empty_groups: true
+
+  - name: Urgent
+    description: Urgent and high priority work that is already in play.
+    shared: true
+    filter:
+      state: [Todo, Pause, In Progress]
+      priority: [urgent, high]
+    display:
+      layout: list
+      group_by: workflowState
+      order_by: priority
+      nesting: none
+      show_empty_groups: true

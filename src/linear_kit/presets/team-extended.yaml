@@ -1,0 +1,67 @@
+kind: team
+name: team-extended
+description: No cycles, t-shirt estimates, review + testing + pause states
+team:
+  private: false
+  icon: Robot
+  color: '#9577ff'
+  cycles:
+    enabled: false
+    duration_weeks: 2
+    cooldown_weeks: 2
+    start_day: 1
+    upcoming_count: 2
+    auto_assign_started: true
+    auto_assign_completed: true
+    lock_to_active: false
+  estimation:
+    type: tShirt
+    default: 1.0
+    allow_zero: false
+    extended: false
+  triage:
+    enabled: false
+    require_priority: false
+# Pause is the interesting one: work that was started and is now parked,
+# typed `unstarted` so it leaves the in-progress count.
+workflow_states:
+- name: Backlog
+  type: backlog
+  color: '#bec2c8'
+- name: Todo
+  type: unstarted
+  color: '#e2e2e2'
+- name: Pause
+  type: unstarted
+  color: '#f7c8c1'
+  description: Started earlier, parked for now.
+- name: In Progress
+  type: started
+  color: '#f2c94c'
+- name: In Review
+  type: started
+  color: '#4cb782'
+- name: Testing
+  type: started
+  color: '#f2994a'
+- name: Done
+  type: completed
+  color: '#5e6ad2'
+- name: Canceled
+  type: canceled
+  color: '#95a2b3'
+
+# Fields are resolved by name against the target workspace at apply time, so
+# this preset carries no workspace-specific UUIDs.
+templates:
+- name: Issue
+  type: issue
+  description: Problem, then proposed solution, with a due date.
+  issue:
+    priority: 4
+    state: Todo
+  form_fields:
+  - { type: title, label: Title }
+  - { type: textarea, label: Description, default: "What is the problem?" }
+  - { type: textarea, label: Solution, required: false }
+  - { type: dueDate, label: Due date, required: false }

@@ -1,0 +1,67 @@
+kind: views
+name: views-board
+description: Team board — statuses as columns, projects as rows, finished work hidden
+
+views:
+  - name: All Issues
+    description: Everything the team has, as a board.
+    shared: true
+    # No filter: the view is scoped to a team, so that alone is "everything here".
+    display:
+      layout: board
+      group_by: workflowState    # columns
+      sub_group_by: project      # rows
+      order_by: priority
+      order_completed_by_recency: true
+      show_completed: week       # only what finished in the past week stays on the board
+      show_sub_issues: true
+      show_empty_groups: true    # empty status columns stay visible
+      show_empty_sub_groups: true
+      # Final states still exist and still hold issues — they just do not earn a
+      # column on a board about work in flight.
+      hide_states: [Done, Canceled, Duplicate]
+      properties:
+        - id
+        - status
+        - assignee
+        - priority
+        - project
+        - estimate
+        - cycle
+        - due_date
+        - milestone
+        - labels
+        - time_in_status
+        - created
+        - updated
+
+  - name: Current cycle
+    description: The team's active cycle, as a board.
+    shared: true
+    filter:
+      cycle: active              # isActive, not an id — survives the cycle rolling over
+    display:
+      layout: board
+      group_by: workflowState
+      sub_group_by: project
+      order_by: priority
+      order_completed_by_recency: true
+      show_completed: week
+      show_sub_issues: true
+      show_empty_groups: true
+      show_empty_sub_groups: true
+      hide_states: [Done, Canceled, Duplicate]
+      properties:
+        - id
+        - status
+        - assignee
+        - priority
+        - project
+        - estimate
+        - cycle
+        - due_date
+        - milestone
+        - labels
+        - time_in_status
+        - created
+        - updated
