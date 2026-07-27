@@ -69,6 +69,7 @@ linear-kit issue list --all-teams --state-type started --json
 linear-kit issue show PAY-12
 linear-kit issue update PAY-12 --state "In Review" --add-label Feature
 linear-kit issue comment PAY-12 -m "Deployed to staging."
+linear-kit issue link PAY-12 --blocked-by PAY-9 --child PAY-14
 ```
 
 `issue list` takes the same filter vocabulary a views preset does, rendered by the same code — so a
@@ -147,6 +148,44 @@ rather than merging into it. Use `--add-label` / `--remove-label` to work from w
 already carries; those read the current labels and fold your change into them.
 
 There is no `issue delete`: the additive-only rule applies here too.
+
+#### Linking issues
+
+```bash
+linear-kit issue link PAY-12 --blocks PAY-13          # PAY-12 holds PAY-13 up
+linear-kit issue link PAY-12 --blocked-by PAY-9       # the same relation, other way round
+linear-kit issue link PAY-12 --related PAY-40
+linear-kit issue link PAY-12 --duplicate-of PAY-11
+linear-kit issue link PAY-12 --parent PAY-3           # PAY-12 becomes a sub-issue
+linear-kit issue link PAY-12 --child PAY-14 --child PAY-15
+```
+
+**The direction is in the flag name**, not in a `--type` option: Linear stores "A blocks B" and "B
+blocks A" as the same relation type, told apart only by which side of the pair each issue sits on,
+so naming the type alone would leave which end ambiguous — and a swapped link is created
+successfully and reads as fact.
+
+The same options work on `issue create` and `issue update`, which is how an issue is filed already
+linked:
+
+```bash
+linear-kit issue create --title "Migrate the sessions table" --blocked-by PAY-9 --child PAY-14
+```
+
+Every issue named is looked up while the plan is built, so `--blocks PAY-999` fails before the new
+issue is created rather than leaving it half-linked.
+
+Linking is idempotent and additive, like everything else here. `issue link` reads the links the
+issue already has and skips the ones that are there, saying so; nothing removes a link, so
+unlinking is a job for the UI. Two directions worth knowing about:
+
+- `--duplicate-of` **moves the issue to the Duplicate state** — Linear does that itself, not
+  linear-kit. The plan says so before it runs.
+- Linear accepts a mutual block (A blocks B *and* B blocks A). Asking for one when the opposite
+  already exists is therefore not an error; the plan flags it, since it is usually a typo'd
+  direction.
+
+`issue show` prints the links in both directions, under `sub-issues` and `links`.
 
 ### Exporting an existing team
 
@@ -269,9 +308,13 @@ resolver, listing the states the team does have, rather than quietly returning n
 ## Status
 
 Implemented: teams, workflow states, labels, projects, milestones, issue templates, custom views,
-team export, and issue create/update/list/show/comment.
+team export, and issue create/update/list/show/comment/link.
 Not implemented: project and document templates; exporting templates and views back to YAML;
-declarative issue presets (seeding a backlog from YAML).
+declarative issue presets (seeding a backlog from YAML); removing a link once made.
+
+Of Linear's four relation types, `blocks`, `related` and `duplicate` are exposed. `similar` is not:
+it is in the enum, but nothing in the UI was found that produces one, so what it means is unverified
+— and guessing undocumented Linear surface is how the bugs listed below got made.
 
 Issue commands do not cover cycles: `--cycle` filters a list, but assigning an issue to a cycle is
 absent, since no team with cycles enabled has been available to verify it against. Guessing that
@@ -302,6 +345,27 @@ Findings verified against a live workspace, since the docs are thin here:
   is only in sending `labelIds` at all when the caller never mentioned a label. `--add-label` /
   `--remove-label` therefore read the current labels and send the folded-in result.
 - Unassigning needs an **explicit `assigneeId: null`**; omitting the key means "keep the assignee".
+- **A relation's direction lives in the input's two id fields, not in its type.** `IssueRelationType`
+  holds `blocks`, `duplicate`, `related` and `similar`; `blocks` always reads *issueId blocks
+  relatedIssueId*, so "blocked by" is that same type with the sides swapped. Which side an issue is
+  on is readable only from `relations` (it is the `issue`) versus `inverseRelations` (it is the
+  `relatedIssue`).
+- **`issueRelationCreate` on a pair that already has that relation returns the existing one** rather
+  than creating a second — the response carried the first relation's id, and a client-supplied `id`
+  did not override it. So re-linking is safe; linear-kit still skips it, because a plan listing a
+  mutation that changes nothing reads as though it did something.
+- **`related` is symmetric and one-directional in storage.** Creating A→B `related` and then B→A
+  `related` left *one* relation, its direction rewritten to B→A. So a link found on either side is
+  the link, and checking only one side would flip it back and forth on every run.
+- **`blocks` is not deduplicated across directions.** With A blocks B in place, B blocks A was
+  accepted as a second relation — a mutual block is a state the API will let you build.
+- **A `duplicate` relation moves the `issue` side to the Duplicate state.** A Backlog issue marked
+  `duplicate` of another came back in state `Duplicate` with no state field ever being sent.
+- `relatedIssueId` equal to `issueId` is refused: `relatedIssueId cannot have the same value as
+  issueId [INVALID_INPUT]`.
+- Sub-issues are not relations at all — `parentId` is a plain field on the child, so making B a
+  sub-issue of A is an `issueUpdate` **on B**. A cycle is refused: `Cannot set parent because it
+  would create a circular issue hierarchy [INPUT_ERROR]`.
 - `customViewCreate.filterData` is a typed `IssueFilter`, not free-form JSON. Grouping, ordering
   and layout are not on the view at all — they live in `viewPreferencesCreate`.
 - **`viewPreferences.preferences` is `JSONObject` and validated by nothing.** Writing
