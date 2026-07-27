@@ -1,10 +1,13 @@
 from linear_kit.resources.export import export_team
 from linear_kit.resources.issue import (
+    RELATION_KINDS,
     IssueFields,
+    IssueLinks,
     get_issue,
     list_issues,
     plan_comment,
     plan_issue_create,
+    plan_issue_link,
     plan_issue_update,
 )
 from linear_kit.resources.plan import Plan, Step
@@ -13,7 +16,9 @@ from linear_kit.resources.team import plan_team
 from linear_kit.resources.view import plan_views
 
 __all__ = [
+    "RELATION_KINDS",
     "IssueFields",
+    "IssueLinks",
     "Plan",
     "Step",
     "export_team",
@@ -21,6 +26,7 @@ __all__ = [
     "list_issues",
     "plan_comment",
     "plan_issue_create",
+    "plan_issue_link",
     "plan_issue_update",
     "plan_project",
     "plan_team",

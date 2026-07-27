@@ -13,12 +13,14 @@ from linear_kit import binding, config, models
 from linear_kit.client import LinearClient, LinearError
 from linear_kit.resources import (
     IssueFields,
+    IssueLinks,
     Plan,
     export_team,
     get_issue,
     list_issues,
     plan_comment,
     plan_issue_create,
+    plan_issue_link,
     plan_issue_update,
     plan_project,
     plan_team,
@@ -359,6 +361,48 @@ DueOpt = Annotated[str | None, typer.Option("--due-date", help="YYYY-MM-DD.")]
 EstimateOpt = Annotated[int | None, typer.Option("--estimate", help="Estimate points.")]
 JsonOpt = Annotated[bool, typer.Option("--json", help="Emit raw JSON instead of a table.")]
 
+# Links to other issues. Direction is in the flag name rather than in a --type
+# option, because "blocks" and "blocked by" are the same relation seen from
+# opposite ends — naming the type alone would leave which end ambiguous.
+ChildOpt = Annotated[
+    list[str] | None,
+    typer.Option("--child", help="Make that issue a sub-issue of this one, e.g. PAY-13. Repeatable."),
+]
+BlocksOpt = Annotated[
+    list[str] | None, typer.Option("--blocks", help="This issue blocks that one. Repeatable.")
+]
+BlockedByOpt = Annotated[
+    list[str] | None,
+    typer.Option("--blocked-by", help="That issue blocks this one. Repeatable."),
+]
+RelatedOpt = Annotated[
+    list[str] | None, typer.Option("--related", help="Relate the two issues. Repeatable.")
+]
+DuplicateOfOpt = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--duplicate-of",
+        help="Mark this issue a duplicate of that one. Linear moves it to the Duplicate state.",
+    ),
+]
+
+
+def _links(
+    blocks: list[str] | None,
+    blocked_by: list[str] | None,
+    related: list[str] | None,
+    duplicate_of: list[str] | None,
+    child: list[str] | None,
+) -> IssueLinks:
+    """Collect the link options, which every issue command spells the same way."""
+    return IssueLinks(
+        blocks=list(blocks or []),
+        blocked_by=list(blocked_by or []),
+        related=list(related or []),
+        duplicate_of=list(duplicate_of or []),
+        children=list(child or []),
+    )
+
 
 @issue_app.command("create")
 def issue_create(
@@ -372,17 +416,26 @@ def issue_create(
     project: ProjectOpt = None,
     milestone: MilestoneOpt = None,
     parent: ParentOpt = None,
+    child: ChildOpt = None,
+    blocks: BlocksOpt = None,
+    blocked_by: BlockedByOpt = None,
+    related: RelatedOpt = None,
+    duplicate_of: DuplicateOfOpt = None,
     due_date: DueOpt = None,
     estimate: EstimateOpt = None,
     workspace: WorkspaceOpt = None,
     dry_run: DryRunOpt = False,
 ) -> None:
-    """Create an issue.
+    """Create an issue, and optionally link it to others.
 
     The workspace and team come from `.linear-kit.toml` in the repo unless named
     explicitly — there is no fallback to the default workspace, since filing a
     task against the wrong one succeeds silently. If the binding names a project,
     the issue joins it; pass `--project none` to keep it out.
+
+    Every issue named by a link option is looked up while planning, so a wrong
+    identifier fails before the issue is created rather than leaving it
+    half-linked.
     """
     bound = _bound(workspace, team, need_team=True)
     if project is None and bound.project:
@@ -393,10 +446,11 @@ def issue_create(
         assignee=assignee, labels=list(label) if label else None, project=project,
         milestone=milestone, parent=parent, due_date=due_date, estimate=estimate,
     )
+    links = _links(blocks, blocked_by, related, duplicate_of, child)
     ws_name, client = _client(bound.workspace)
     with client:
         try:
-            plan = plan_issue_create(client, team=bound.team, fields=fields)
+            plan = plan_issue_create(client, team=bound.team, fields=fields, links=links)
         except LinearError as exc:
             _fail(str(exc))
             return
@@ -418,17 +472,25 @@ def issue_update(
     project: ProjectOpt = None,
     milestone: MilestoneOpt = None,
     parent: ParentOpt = None,
+    child: ChildOpt = None,
+    blocks: BlocksOpt = None,
+    blocked_by: BlockedByOpt = None,
+    related: RelatedOpt = None,
+    duplicate_of: DuplicateOfOpt = None,
     due_date: DueOpt = None,
     estimate: EstimateOpt = None,
     workspace: WorkspaceOpt = None,
     dry_run: DryRunOpt = False,
 ) -> None:
-    """Change fields on an existing issue.
+    """Change fields on an existing issue, and optionally link it to others.
 
     Only what you name is touched — every other field keeps its value. The
     exception is `--label`, which replaces the issue's labels outright because
     Linear's `labelIds` replaces rather than merges; use `--add-label` /
     `--remove-label` to work from what the issue already has.
+
+    Links are additive: a link the issue already has is skipped with a note, and
+    nothing here removes one.
     """
     fields = IssueFields(
         title=title, description=description, state=state, priority=priority,
@@ -438,11 +500,47 @@ def issue_update(
         project=project, milestone=milestone, parent=parent,
         due_date=due_date, estimate=estimate,
     )
+    links = _links(blocks, blocked_by, related, duplicate_of, child)
     bound = _bound(workspace, None, need_team=False)
     ws_name, client = _client(bound.workspace)
     with client:
         try:
-            plan = plan_issue_update(client, identifier, fields=fields)
+            plan = plan_issue_update(client, identifier, fields=fields, links=links)
+        except LinearError as exc:
+            _fail(str(exc))
+            return
+        _note_binding(plan, bound)
+        _execute(plan, ws_name, client, dry_run=dry_run)
+
+
+@issue_app.command("link")
+def issue_link(
+    identifier: Annotated[str, typer.Argument(help="Issue identifier, e.g. PAY-12.")],
+    blocks: BlocksOpt = None,
+    blocked_by: BlockedByOpt = None,
+    related: RelatedOpt = None,
+    duplicate_of: DuplicateOfOpt = None,
+    parent: ParentOpt = None,
+    child: ChildOpt = None,
+    workspace: WorkspaceOpt = None,
+    dry_run: DryRunOpt = False,
+) -> None:
+    """Link an issue to others, without touching its own fields.
+
+    The direction is in the flag: `PAY-1 --blocks PAY-2` means PAY-1 holds PAY-2
+    up, `--blocked-by` is the same relation seen from the other end. Repeat an
+    option to link several issues, and combine options in one command.
+
+    Reruns are safe. Links the issue already has are skipped with a note, so a
+    second run reports what it left alone instead of re-sending it. Nothing here
+    removes a link — like every other command, this is additive only.
+    """
+    links = _links(blocks, blocked_by, related, duplicate_of, child)
+    bound = _bound(workspace, None, need_team=False)
+    ws_name, client = _client(bound.workspace)
+    with client:
+        try:
+            plan = plan_issue_link(client, identifier, links=links, parent=parent)
         except LinearError as exc:
             _fail(str(exc))
             return
@@ -607,6 +705,12 @@ def issue_show(
         for child in children:
             typer.echo(f"  {child['identifier']:<10} {child['state']['name']:<14} {child['title']}")
 
+    links = _link_rows(issue)
+    if links:
+        typer.secho("\nlinks", bold=True)
+        for phrase, other in links:
+            typer.echo(f"  {phrase:<14} {other['identifier']:<10} {other['title']}")
+
     comments = issue.get("comments", {}).get("nodes") or []
     if comments:
         typer.secho("\ncomments", bold=True)
@@ -615,6 +719,39 @@ def issue_show(
             typer.echo(f"  {who} at {comment['createdAt']}")
             for line in comment["body"].splitlines():
                 typer.echo(f"    {line}")
+
+
+#: How a relation reads from the viewpoint of the issue being shown. Which side
+#: of the pair the issue sits on is the only thing separating "blocks" from
+#: "blocked by" — Linear stores both as type `blocks`.
+LINK_PHRASES: dict[tuple[str, bool], str] = {
+    ("blocks", False): "blocks",
+    ("blocks", True): "blocked by",
+    ("duplicate", False): "duplicate of",
+    ("duplicate", True): "duplicated by",
+    ("related", False): "related to",
+    ("related", True): "related to",
+    ("similar", False): "similar to",
+    ("similar", True): "similar to",
+}
+
+
+def _link_rows(issue: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    """Flatten both relation directions into (phrase, other issue) rows.
+
+    A type outside the table is printed as Linear names it rather than dropped:
+    `similar` is not something linear-kit writes, but an issue that has one
+    should still show it.
+    """
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for key, other_key, inverse in (
+        ("relations", "relatedIssue", False),
+        ("inverseRelations", "issue", True),
+    ):
+        for node in issue.get(key, {}).get("nodes") or []:
+            phrase = LINK_PHRASES.get((node["type"], inverse)) or str(node["type"])
+            rows.append((phrase, node[other_key]))
+    return rows
 
 
 def _priority_name(value: int | None) -> str:

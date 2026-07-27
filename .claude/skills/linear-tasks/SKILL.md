@@ -1,6 +1,6 @@
 ---
 name: linear-tasks
-description: Create, update, list and comment on Linear issues via the linear-kit CLI. Use when the user asks to file/create a task or issue, change an issue's status/assignee/labels/priority, look at their backlog or what is in progress, or comment on an issue. For configuring a workspace itself — teams, workflow states, labels, projects, milestones, views — use linear-setup instead.
+description: Create, update, list, link and comment on Linear issues via the linear-kit CLI. Use when the user asks to file/create a task or issue, change an issue's status/assignee/labels/priority, mark one issue as blocking/blocked by another or as a sub-issue of another, look at their backlog or what is in progress, or comment on an issue. For configuring a workspace itself — teams, workflow states, labels, projects, milestones, views — use linear-setup instead.
 ---
 
 # Linear tasks
@@ -109,9 +109,10 @@ linear-kit issue list -s Todo -a me
 linear-kit issue list --all-projects        # whole team, ignoring the bound project
 linear-kit issue list --all-teams --state-type started
 linear-kit issue list --json                # for parsing
-linear-kit issue show PAY-12                # + description, sub-issues, comments
+linear-kit issue show PAY-12                # + description, sub-issues, links, comments
 linear-kit issue update PAY-12 --state "In Review" --add-label Feature
 linear-kit issue comment PAY-12 -m "Deployed to staging."
+linear-kit issue link PAY-12 --blocked-by PAY-9 --child PAY-14
 
 # Outside a bound repo, or when the user names the target explicitly:
 linear-kit issue create -w my-workspace -t PAY --title "..." --dry-run
@@ -129,6 +130,37 @@ Fields on `create` / `update`: `--title`, `-d/--description` (markdown), `-s/--s
 - `--project none` detaches, and overrides a project named in the binding.
 
 `update` is a partial patch: what you do not name keeps its value.
+
+## Links: the direction is in the flag
+
+`blocks` and `blocked by` are **one** Linear relation seen from opposite ends, so the flag names
+which end the issue in the argument is on. Get it backwards and the link is created, reads as fact,
+and nobody notices.
+
+```bash
+linear-kit issue link PAY-12 --blocks PAY-13      # PAY-12 holds PAY-13 up
+linear-kit issue link PAY-12 --blocked-by PAY-9   # PAY-9 holds PAY-12 up
+linear-kit issue link PAY-12 --related PAY-40
+linear-kit issue link PAY-12 --duplicate-of PAY-11
+linear-kit issue link PAY-12 --parent PAY-3       # PAY-12 becomes a sub-issue of PAY-3
+linear-kit issue link PAY-12 --child PAY-14 --child PAY-15   # the other way round
+```
+
+Read the user's sentence literally: "PAY-12 is waiting on PAY-9" → `PAY-12 --blocked-by PAY-9`.
+"nothing can start until PAY-12 is done" → `PAY-12 --blocks ...`. When the sentence is ambiguous,
+`--dry-run` and show the plan line — it spells the direction out in words
+(`issueRelationCreate  PAY-12 blocked by PAY-9`).
+
+Every option above also works on `create` and `update`, which is how a task is filed already
+linked: `issue create --title "..." --blocked-by PAY-9 --child PAY-14`. A wrong identifier fails
+before the issue is created, not after.
+
+- **Reruns are safe.** `link` reads what the issue already has and skips it with a note.
+- **Nothing removes a link.** Unlinking is a UI job, same asymmetry as `issue delete`.
+- **`--duplicate-of` moves the issue to the Duplicate state** — Linear does that itself. Do not use
+  it as a soft "these two look alike"; that is `--related`.
+- A mutual block (A blocks B *and* B blocks A) is accepted by Linear. If the plan notes that the
+  opposite direction already exists, stop and check with the user — it is usually a flipped flag.
 
 ## Labels: --add-label, not --label
 
@@ -160,8 +192,9 @@ Filters AND together; repeating one ORs its values (`-s Todo -s "In Progress"` =
 
 Assigning an issue to a cycle (`--cycle` filters a list, but nothing sets one) — the shape was
 never verified against a team with cycles enabled, and guessing undocumented Linear surface is
-how this project's existing bugs were made. Also: no `issue delete`, no declarative issue presets
-(seeding a backlog from YAML), no sub-issue creation in bulk.
+how this project's existing bugs were made. Also: no `issue delete`, no removing a link once made,
+no declarative issue presets (seeding a backlog from YAML), and no `similar` relation — it is in
+Linear's enum but nothing in the UI was found that produces one, so its meaning is unverified.
 
 ## API facts (verified against a live workspace)
 
@@ -173,6 +206,14 @@ how this project's existing bugs were made. Also: no `issue delete`, no declarat
   → `Feature` alone). Every other field is a normal partial patch — updating `priority` alone left
   labels untouched. See the labels section above.
 - Unassigning needs an explicit `assigneeId: null`; omitting the key means "keep".
+- **A relation's direction is in the two id fields, not in its type**: `blocks` reads *issueId
+  blocks relatedIssueId*, so "blocked by" is the same type with the sides swapped. Re-creating a
+  relation that exists returns the existing one rather than a duplicate.
+- `related` is symmetric — created A→B then B→A, one relation remained with its direction
+  rewritten. `blocks` is not: A blocks B and B blocks A can both exist.
+- A `duplicate` relation moves the `issue` side to the **Duplicate state** on its own.
+- A sub-issue is not a relation: `parentId` is a field on the **child**, so `--child` is an
+  `issueUpdate` on the other issue. Linear refuses a parent cycle.
 - Rate limiting is **HTTP 400 + `RATELIMITED`**, not 429. The client retries it.
 - Errors put the real cause in `extensions.userPresentableMessage`; `message` is often a bare
   "Access denied".
