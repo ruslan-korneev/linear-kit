@@ -5,3 +5,5 @@ __pycache__/
 dist/
 !.claude/
 .claude/settings.local.json
+# real workspace/team/project names — keep them out of the repo (see CLAUDE.md)
+.linear-kit.toml
