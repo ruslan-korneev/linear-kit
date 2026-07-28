@@ -115,7 +115,8 @@ class Resolver:
 
     def _project(self, name: str) -> dict[str, Any]:
         if self._projects is None:
-            self._projects = self._client.execute(PROJECTS)["projects"]["nodes"]
+            nodes: list[dict[str, Any]] = self._client.execute(PROJECTS)["projects"]["nodes"]
+            self._projects = nodes
         projects = self._projects
         needle = name.casefold()
         for project in projects:
